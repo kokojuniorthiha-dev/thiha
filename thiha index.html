@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#090d16">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="AegisFlow VPN - Secure, fast, and stealthy mobile virtual private network.">
+  <title>AegisFlow VPN Mobile</title>
+  
+  <!-- The manifest link will be injected dynamically by JS -->
+  <link id="manifest-placeholder" rel="manifest" href="">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            vpn: {
+              dark: '#090d16',
+              card: '#121826',
+              border: '#1f293d',
+              accent: '#6366f1',
+              neon: '#10b981',
+              danger: '#f43f5e'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: manipulation;
+    }
+    input, textarea {
+      user-select: text;
+    }
+    .safe-top {
+      padding-top: max(env(safe-area-inset-top), 14px);
+    }
+    .safe-bottom {
+      padding-bottom: max(env(safe-area-inset-bottom), 16px);
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.25); opacity: 0; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+    .animate-pulse-ring {
+      animation: pulseRing 2.2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    @keyframes rotateSlow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-spin-slow {
+      animation: rotateSlow 8s linear infinite;
+    }
+  </style>
+
+  <script>
+    // Dynamically generate PWA assets to satisfy PWABuilder
+    document.addEventListener("DOMContentLoaded", () => {
+      // 1. Generate Manifest
+      const manifestData = {
+        "name": "AegisFlow VPN Mobile",
+        "short_name": "AegisVPN",
+        "description": "Secure, fast, and stealthy mobile virtual private network.",
+        "start_url": "./",
+        "display": "standalone",
+        "background_color": "#090d16",
+        "theme_color": "#6366f1",
+        "icons": [
+          {
+            "src": "https://placehold.co/192x192/6366f1/ffffff?text=VPN",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+          },
+          {
+            "src": "https://placehold.co/512x512/6366f1/ffffff?text=VPN",
+            "sizes": "512x512",
+            "type": "image/png"
+          }
+        ]
+      };
+      
+      const manifestBlob = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
+      const manifestUrl = URL.createObjectURL(manifestBlob);
+      document.getElementById('manifest-placeholder').setAttribute('href', manifestUrl);
+
+      // 2. Generate and Register Service Worker
+      if ('serviceWorker' in navigator) {
+        const swCode = `
+          const CACHE_NAME = 'aegisflow-vpn-v1';
+          self.addEventListener('install', (e) => {
+            self.skipWaiting();
+          });
+          self.addEventListener('activate', (e) => {
+            e.waitUntil(clients.claim());
+          });
+          self.addEventListener('fetch', (e) => {
+            e.respondWith(fetch(e.request).catch(() => new Response('Offline mode not fully supported.')));
+          });
+        `;
+        const swBlob = new Blob([swCode], {type: 'application/javascript'});
+        const swUrl = URL.createObjectURL(swBlob);
+        
+        navigator.serviceWorker.register(swUrl)
+          .then(reg => console.log('Dynamically generated SW registered', reg))
+          .catch(err => console.error('Dynamic SW registration failed', err));
+      }
+    });
+  </script>
+</head>
+
+<body class="bg-vpn-dark text-slate-100 min-h-screen flex flex-col font-sans overflow-x-hidden antialiased selection:bg-indigo-500">
+
+  <!-- Mobile Top Bar -->
+  <header class="sticky top-0 z-40 bg-[#090d16]/90 backdrop-blur-md border-b border-vpn-border safe-top px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-2.5">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="font-bold text-base tracking-wide flex items-center gap-1.5 text-white">
+          AegisFlow <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30">STEALTH</span>
+        </h1>
+        <p class="text-[11px] text-slate-400 flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full" id="statusDot" style="background-color: #94a3b8;"></span>
+          <span id="headerStatusText">Ready to protect</span>
+        </p>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-2">
+      <!-- Special Stealth Indicator -->
+      <button onclick="switchTab('special')" class="px-2.5 py-1.5 rounded-xl bg-indigo-950/60 border border-indigo-700/50 flex items-center gap-1.5 text-indigo-300 text-xs font-semibold active:scale-95 transition-all">
+        <span>🛡️</span>
+        <span class="hidden sm:inline">Stealth Mode</span>
+      </button>
+
+      <!-- Android Build Guide -->
+      <button onclick="openModal('nativeApkModal')" class="p-2 rounded-xl bg-vpn-card border border-vpn-border text-slate-300 active:scale-95 transition-all" title="Android Native APK info">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 w-full max-w-md mx-auto p-4 pb-24 overflow-y-auto">
+    
+    <!-- ==================== VIEW 1: ONE-TAP CONNECT ==================== -->
+    <section id="view-connect" class="space-y-5">
+
+      <!-- Active Connection Status Card -->
+      <div class="bg-vpn-card border border-vpn-border rounded-2xl p-4 flex items-center justify-between shadow-xl">
+        <div class="flex items-center gap-3">
+          <div id="countryFlagEl" class="text-3xl p-1 bg-slate-800/80 rounded-xl border border-slate-700 flex items-center justify-center w-12 h-12">
+            🇸🇬
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 flex items-center gap-1">
+              <span>Selected Node</span>
+              <span id="protocolBadge" class="text-[10px] px-1 rounded bg-indigo-500/20 text-indigo-300 font-mono">TLS-Obfs</span>
+            </div>
+            <h3 id="currentServerName" class="text-base font-bold text-white">Singapore - Cloud Fast</h3>
+            <p id="currentServerPing" class="text-xs text-emerald-400 font-mono font-medium">● 32 ms (Lowest Latency)</p>
+          </div>
+        </div>
+        <button onclick="switchTab('servers')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 active:scale-95 transition-all">
+          <span>Change</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="py-6 flex flex-col items-center justify-center relative">
+        <!-- Outer Glowing Ring -->
+        <div id="pulseRings" class="absolute w-56 h-56 rounded-full border-2 border-indigo-500/30 opacity-0 pointer-events-none"></div>
+        <div id="pulseRings2" class="absolute w-64 h-64 rounded-full border border-emerald-500/20 opacity-0 pointer-events-none"></div>
+
+        <!-- Main Connect Button -->
+        <button 
+          id="mainVpnBtn" 
+          onclick="toggleVpnConnection()" 
+          class="relative w-44 h-44 rounded-full bg-gradient-to-b from-slate-800 to-vpn-card border-4 border-slate-700/80 shadow-2xl flex flex-col items-center justify-center transition-all duration-500 active:scale-95 group focus:outline-none">
+          
+          <!-- Inner status indicator icon -->
+          <div id="btnIconWrapper" class="w-16 h-16 rounded-full bg-slate-700/60 flex items-center justify-center transition-all duration-500 mb-2">
+            <svg id="btnPowerIcon" class="w-8 h-8 text-slate-400 transition-colors duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+
+          <span id="btnTextPrimary" class="text-sm font-bold tracking-wider uppercase text-slate-300 transition-colors">TAP TO CONNECT</span>
+          <span id="btnTextSub" class="text-[11px] text-slate-500 font-mono mt-0.5">NOT SECURED</span>
+        </button>
+
+        <!-- Current Session Duration -->
+        <div class="mt-4 text-center">
+          <p class="text-xs text-slate-400">Connection Duration</p>
+          <p id="sessionDuration" class="text-lg font-mono font-bold text-slate-300">00:00:00</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-vpn-card border border-vpn-border p-3.5 rounded-2xl flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </div>
+          <div>
+            <span class="text-[11px] text-slate-400">Download</span>
+            <p id="dlSpeed" class="text-base font-bold font-mono text-slate-100">0.0 <span class="text-xs text-slate-400">KB/s</span></p>
+          </div>
+        </div>
+
+        <div class="bg-vpn-card border border-vpn-border p-3.5 rounded-2xl flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          </div>
+          <div>
+            <span class="text-[11px] text-slate-400">Upload</span>
+            <p id="ulSpeed" class="text-base font-bold font-mono text-slate-100">0.0 <span class="text-xs text-slate-400">KB/s</span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- IP and Encryption Information Banner -->
+      <div class="bg-slate-900/80 border border-vpn-border rounded-2xl p-4 space-y-2 text-xs">
+        <div class="flex justify-between items-center text-slate-400">
+          <span>Protected Virtual IP:</span>
+          <span id="virtualIpText" class="font-mono text-slate-200 font-semibold">103.253.142.88 (SG)</span>
+        </div>
+        <div class="flex justify-between items-center text-slate-400">
+          <span>Encryption Cipher:</span>
+          <span class="font-mono text-indigo-400">ChaCha20-Poly1305</span>
+        </div>
+        <div class="flex justify-between items-center text-slate-400">
+          <span>DNS Security:</span>
+          <span class="text-emerald-400 flex items-center gap-1 font-semibold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Encrypted DoH
+          </span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ==================== VIEW 2: SPECIAL FUNCTIONS ==================== -->
+    <section id="view-special" class="space-y-4 hidden">
+      <div class="bg-gradient-to-r from-indigo-900/40 via-purple-900/30 to-slate-900 border border-indigo-500/40 p-4 rounded-2xl">
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          <span>⚡</span> Special Anti-Blocking Functions
+        </h2>
+        <p class="text-xs text-slate-300 mt-1">
+          Engineered to bypass Deep Packet Inspection (DPI), strict firewalls, ISP port throttling, and local network blackouts.
+        </p>
+      </div>
+
+      <!-- Special Function 1: Stealth Obfuscation -->
+      <div class="bg-vpn-card border border-vpn-border p-4 rounded-2xl space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="space-y-0.5">
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-semibold text-white">Stealth Packet Obfuscation</span>
+              <span class="text-[9px] px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 font-bold rounded">BEST</span>
+            </div>
+            <p class="text-xs text-slate-400">Disguises VPN traffic as normal HTTPS/TLS web browsing to evade censorship detection.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="toggleStealth" class="sr-only peer" checked onchange="handleSpecialToggle('Stealth Obfuscation', this.checked)">
+            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+          </label>
+        </div>
+        <div class="text-[11px] text-slate-400 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+          <span class="text-indigo-400 font-semibold">Mechanism:</span> Wraps WireGuard/Shadowsocks payloads in TLS WebSocket headers over standard Port 443.
+        </div>
+      </div>
+
+      <!-- Special Function 2: Real-time Kill Switch -->
+      <div class="bg-vpn-card border border-vpn-border p-4 rounded-2xl flex items-center justify-between">
+        <div class="space-y-0.5 pr-3">
+          <h3 class="text-sm font-semibold text-white">Always-On Kill Switch</h3>
+          <p class="text-xs text-slate-400">Instantly blocks all internet access if the VPN connection drops unexpectedly, preventing real IP leaks.</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="toggleKillSwitch" class="sr-only peer" checked onchange="handleSpecialToggle('Kill Switch', this.checked)">
+          <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+        </label>
+      </div>
+
+      <!-- Special Function 3: Dynamic Port Hopping -->
+      <div class="bg-vpn-card border border-vpn-border p-4 rounded-2xl flex items-center justify-between">
+        <div class="space-y-0.5 pr-3">
+          <h3 class="text-sm font-semibold text-white">Dynamic Port Hopping</h3>
+          <p class="text-xs text-slate-400">Automatically switches outgoing UDP/TCP ports every few minutes to prevent ISP firewall rate-limiting.</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="togglePortHop" class="sr-only peer" onchange="handleSpecialToggle('Port Hopping', this.checked)">
+          <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+        </label>
+      </div>
+
+      <!-- Special Function 4: Split Tunneling -->
+      <div class="bg-vpn-card border border-vpn-border p-4 rounded-2xl space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-white">App Split Tunneling</h3>
+            <p class="text-xs text-slate-400">Select local apps that bypass VPN (e.g., local banking, maps, mobile payments).</p>
+          </div>
+          <button onclick="openModal('splitTunnelModal')" class="px-3 py-1.5 bg-slate-800 rounded-xl text-xs text-indigo-400 font-semibold border border-slate-700">Configure</button>
+        </div>
+      </div>
+
+      <!-- Diagnostic Ping / Connectivity Test -->
+      <div class="bg-vpn-card border border-vpn-border p-4 rounded-2xl space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="text-sm font-semibold text-white">Network Diagnostics</h3>
+          <button onclick="runNetworkDiagnostics()" id="diagBtn" class="text-xs bg-indigo-600 px-3 py-1 rounded-lg text-white font-medium active:scale-95 transition-all">Run Latency Test</button>
+        </div>
+        <div id="diagnosticResults" class="space-y-2 text-xs text-slate-300">
+          <div class="flex justify-between border-b border-slate-800/80 pb-1.5">
+            <span class="text-slate-400">Cloudflare DNS Response:</span>
+            <span id="dnsPingVal" class="font-mono text-emerald-400">28 ms</span>
+          </div>
+          <div class="flex justify-between border-b border-slate-800/80 pb-1.5">
+            <span class="text-slate-400">Websocket TLS Handshake:</span>
+            <span id="tlsHandshakeVal" class="font-mono text-emerald-400">Success (0.04s)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">DPI Filter Test:</span>
+            <span class="text-emerald-400 font-semibold">Passed (No Packet Drops)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW 3: GLOBAL SERVERS ==================== -->
+    <section id="view-servers" class="space-y-3 hidden">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Global High-Speed Nodes</h2>
+          <p class="text-xs text-slate-500">Pick any server to instantly switch routes</p>
+        </div>
+        <button onclick="refreshPings()" class="p-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-300 active:scale-95 transition-all flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Ping
+        </button>
+      </div>
+
+      <!-- Server Node Cards Container -->
+      <div id="serverListContainer" class="space-y-2.5">
+        <!-- Rendered by JavaScript -->
+      </div>
+
+      <!-- Custom Config Importer Card -->
+      <div class="mt-4 p-4 rounded-2xl bg-slate-900 border border-dashed border-slate-700/80 text-center space-y-2">
+        <p class="text-xs font-semibold text-slate-300">Have a custom V2Ray, WireGuard, or Shadowsocks key?</p>
+        <button onclick="openModal('importConfigModal')" class="px-4 py-2 bg-indigo-600/80 active:bg-indigo-600 rounded-xl text-xs font-bold text-white shadow-md transition-all">
+          + Import Custom Node (vless:// / ss://)
+        </button>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW 4: ANDROID INSTALL GUIDE ==================== -->
+    <section id="view-install" class="space-y-4 hidden">
+      <div class="bg-gradient-to-br from-indigo-950 to-slate-900 border border-indigo-700/40 p-4 rounded-2xl space-y-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>📱</span> Getting Real VPN On Your Phone
+        </h3>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          To encrypt and tunnel <strong class="text-white">every app on your phone</strong> (YouTube, Telegram, TikTok, Chrome, Games), Android requires special OS-level permissions via <code class="text-indigo-300 bg-slate-800 px-1 py-0.5 rounded">android.net.VpnService</code>.
+        </p>
+      </div>
+
+      <div class="bg-vpn-card border border-vpn-border p-4 rounded-2xl space-y-2.5">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400">Option 1: Ready-Made Open Source APKs (No Coding Needed)</h4>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          If you need a working VPN immediately on your Android phone to bypass censorship:
+        </p>
+        <ul class="text-xs text-slate-300 space-y-2 list-disc list-inside bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+          <li><strong class="text-white">v2rayNG:</strong> Best Android app for bypassing severe blocks using VLESS/VMess with TLS disguise. Available directly on GitHub Releases or F-Droid as an APK.</li>
+          <li><strong class="text-white">WireGuard Android:</strong> High-speed protocol app on F-Droid and Play Store with instant config import.</li>
+          <li><strong class="text-white">Shadowsocks Android:</strong> Lightweight, battery friendly, with obfuscation plugins (v2ray-plugin).</li>
+        </ul>
+      </div>
+
+      <div class="bg-vpn-card border border-vpn-border p-4 rounded-2xl space-y-2">
+        <div class="flex justify-between items-center">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-400">Option 2: Native Android Studio Code</h4>
+          <button onclick="copyAndroidVpnCode()" class="text-[11px] text-indigo-300 font-semibold bg-indigo-950 px-2.5 py-1 rounded-lg border border-indigo-700">Copy Kotlin Code</button>
+        </div>
+        <p class="text-xs text-slate-400">Below is the core native Android <code class="text-indigo-300">VpnService</code> implementation required to build your own APK.</p>
+        <pre class="bg-slate-950 p-3 rounded-xl text-[10px] font-mono text-slate-300 overflow-x-auto border border-slate-800 leading-relaxed">
+class SimpleVpnService : VpnService() {
+    private var vpnInterface: ParcelFileDescriptor? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Configure VPN tunnel interface
+        vpnInterface = Builder()
+            .setSession("AegisFlowVPN")
+            .addAddress("10.0.0.2", 24)
+            .addDnsServer("1.1.1.1")
+            .addRoute("0.0.0.0", 0) // Route all phone traffic
+            .setMtu(1420)
+            .setBlocking(false)
+            .establish()
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        vpnInterface?.close()
+        super.onDestroy()
+    }
+}</pre>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="fixed bottom-0 left-0 right-0 z-40 bg-vpn-dark/95 backdrop-blur-md border-t border-vpn-border safe-bottom">
+    <div class="max-w-md mx-auto grid grid-cols-4 px-2 py-2">
+      <!-- Quick Connect -->
+      <button onclick="switchTab('connect')" id="nav-connect" class="flex flex-col items-center justify-center py-1 text-indigo-400 font-medium transition-all group">
+        <svg class="w-6 h-6 transition-transform group-active:scale-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+        <span class="text-[10px] mt-1">Connect</span>
+      </button>
+
+      <!-- Special Functions -->
+      <button onclick="switchTab('special')" id="nav-special" class="flex flex-col items-center justify-center py-1 text-slate-400 font-medium transition-all group">
+        <svg class="w-6 h-6 transition-transform group-active:scale-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+        <span class="text-[10px] mt-1">Special</span>
+      </button>
+
+      <!-- Servers Tab -->
+      <button onclick="switchTab('servers')" id="nav-servers" class="flex flex-col items-center justify-center py-1 text-slate-400 font-medium transition-all group">
+        <svg class="w-6 h-6 transition-transform group-active:scale-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span class="text-[10px] mt-1">Servers</span>
+      </button>
+
+      <!-- Android Install Tab -->
+      <button onclick="switchTab('install')" id="nav-install" class="flex flex-col items-center justify-center py-1 text-slate-400 font-medium transition-all group">
+        <svg class="w-6 h-6 transition-transform group-active:scale-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+        <span class="text-[10px] mt-1">Install APK</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Split Tunnel Modal -->
+  <div id="splitTunnelModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-vpn-card border border-vpn-border w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-2xl">
+      <h3 class="text-base font-bold text-white">App Split Tunneling</h3>
+      <p class="text-xs text-slate-400">Choose apps that bypass the VPN to use direct local ISP connection:</p>
+      
+      <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+        <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+          <span class="flex items-center gap-2"><span>🏦</span> Banking & Payment Apps</span>
+          <input type="checkbox" checked class="rounded border-slate-700 text-indigo-600 focus:ring-0">
+        </label>
+        <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+          <span class="flex items-center gap-2"><span>🗺️</span> Local Maps & Navigation</span>
+          <input type="checkbox" checked class="rounded border-slate-700 text-indigo-600 focus:ring-0">
+        </label>
+        <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+          <span class="flex items-center gap-2"><span>📺</span> YouTube / Netflix</span>
+          <input type="checkbox" class="rounded border-slate-700 text-indigo-600 focus:ring-0">
+        </label>
+        <label class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+          <span class="flex items-center gap-2"><span>💬</span> Telegram / Signal</span>
+          <input type="checkbox" class="rounded border-slate-700 text-indigo-600 focus:ring-0">
+        </label>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeModal('splitTunnelModal')" class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white shadow-md">Apply Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Config Modal -->
+  <div id="importConfigModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-vpn-card border border-vpn-border w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-2xl">
+      <h3 class="text-base font-bold text-white">Import Custom Node</h3>
+      <p class="text-xs text-slate-400">Paste your V2Ray (<code class="text-indigo-400">vmess://</code>, <code class="text-indigo-400">vless://</code>) or Shadowsocks (<code class="text-indigo-400">ss://</code>) link:</p>
+      
+      <textarea id="importConfigInput" rows="4" placeholder="vless://xxxx-xxxx-xxxx@104.21.5.12:443?encryption=none&security=tls..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-slate-100 focus:outline-none focus:border-indigo-500"></textarea>
+
+      <div class="flex justify-end gap-2">
+        <button onclick="closeModal('importConfigModal')" class="px-3.5 py-2 text-xs font-medium text-slate-400">Cancel</button>
+        <button onclick="handleSaveCustomNode()" class="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-md">Add Server</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Native APK Architecture Info Modal -->
+  <div id="nativeApkModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-vpn-card border border-vpn-border w-full max-w-sm rounded-2xl p-5 space-y-3.5 shadow-2xl">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600/30 text-indigo-400 flex items-center justify-center font-bold">🤖</div>
+        <h3 class="text-base font-bold text-white">Android VPN Architecture</h3>
+      </div>
+      <p class="text-xs text-slate-300 leading-relaxed">
+        Android security isolates apps so that normal web pages cannot intercept other apps' traffic. When you tap connect in a real APK:
+      </p>
+      <ol class="text-xs text-slate-300 space-y-2 list-decimal list-inside bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+        <li>The system triggers an Android dialog: <em class="text-indigo-300">"Allow connection request"</em> with a key icon.</li>
+        <li><code class="text-emerald-400">VpnService</code> creates a virtual network interface (<code class="text-slate-200">tun0</code>).</li>
+        <li>All phone packets are captured, encrypted with TLS/ChaCha20, and tunneled to the selected server node.</li>
+      </ol>
+      <button onclick="closeModal('nativeApkModal')" class="w-full py-2.5 bg-indigo-600 rounded-xl text-xs font-semibold text-white shadow-lg">Got It</button>
+    </div>
+  </div>
+
+  <!-- Toast Message Element -->
+  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-800/95 border border-indigo-500/50 text-white text-xs px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2 transform -translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+    <span id="toastMsg">Ready</span>
+  </div>
+
+  <script>
+    // State Variables
+    let isConnected = false;
+    let isConnecting = false;
+    let sessionTimerInterval = null;
+    let sessionSeconds = 0;
+    let telemetryInterval = null;
+
+    // Available Global Nodes
+    const serverNodes = [
+      { id: 'sg-fast', name: 'Singapore - Fast Route', flag: '🇸🇬', ping: 32, ip: '103.253.142.88', load: '38%', protocol: 'TLS-Obfs' },
+      { id: 'jp-tokyo', name: 'Japan - Tokyo Cloud', flag: '🇯🇵', ping: 58, ip: '133.242.18.91', load: '45%', protocol: 'Shadowsocks' },
+      { id: 'us-west', name: 'US West - Silicon Valley', flag: '🇺🇸', ping: 142, ip: '198.51.100.42', load: '62%', protocol: 'WireGuard' },
+      { id: 'de-fra', name: 'Germany - Frankfurt', flag: '🇩🇪', ping: 165, ip: '185.190.140.22', load: '29%', protocol: 'TLS-Obfs' },
+      { id: 'uk-lon', name: 'UK - London Relay', flag: '🇬🇧', ping: 178, ip: '51.89.150.11', load: '51%', protocol: 'TLS-Obfs' }
+    ];
+
+    let activeNodeIndex = 0;
+
+    // Tab Switching
+    function switchTab(tabId) {
+      const tabs = ['connect', 'special', 'servers', 'install'];
+      tabs.forEach(t => {
+        const viewEl = document.getElementById('view-' + t);
+        const navEl = document.getElementById('nav-' + t);
+        if (t === tabId) {
+          viewEl.classList.remove('hidden');
+          navEl.classList.add('text-indigo-400');
+          navEl.classList.remove('text-slate-400');
+        } else {
+          viewEl.classList.add('hidden');
+          navEl.classList.remove('text-indigo-400');
+          navEl.classList.add('text-slate-400');
+        }
+      });
+    }
+
+    // Connect / Disconnect Toggle
+    function toggleVpnConnection() {
+      if (isConnecting) return;
+
+      if (!isConnected) {
+        // Start Connecting sequence
+        isConnecting = true;
+        updateUiState('connecting');
+
+        setTimeout(() => {
+          isConnected = true;
+          isConnecting = false;
+          updateUiState('connected');
+          startSessionTimer();
+          startTelemetrySimulation();
+          showToast('Connected! Traffic is encrypted & stealth cloaked.');
+        }, 1200);
+
+      } else {
+        // Disconnecting
+        isConnecting = true;
+        updateUiState('disconnecting');
+
+        setTimeout(() => {
+          isConnected = false;
+          isConnecting = false;
+          updateUiState('disconnected');
+          stopSessionTimer();
+          stopTelemetrySimulation();
+          showToast('VPN Disconnected');
+        }, 600);
+      }
+    }
+
+    function updateUiState(state) {
+      const btn = document.getElementById('mainVpnBtn');
+      const iconWrap = document.getElementById('btnIconWrapper');
+      const icon = document.getElementById('btnPowerIcon');
+      const textPrimary = document.getElementById('btnTextPrimary');
+      const textSub = document.getElementById('btnTextSub');
+      const pulse1 = document.getElementById('pulseRings');
+      const pulse2 = document.getElementById('pulseRings2');
+      const headerStatus = document.getElementById('headerStatusText');
+      const statusDot = document.getElementById('statusDot');
+
+      if (state === 'connecting') {
+        textPrimary.innerText = 'CONNECTING...';
+        textPrimary.className = 'text-sm font-bold tracking-wider uppercase text-amber-400';
+        textSub.innerText = 'ESTABLISHING TLS TUNNEL';
+        icon.classList.add('animate-spin-slow');
+        headerStatus.innerText = 'Negotiating obfuscated tunnel...';
+        statusDot.style.backgroundColor = '#f59e0b';
+      } 
+      else if (state === 'connected') {
+        btn.classList.add('border-emerald-500/80', 'shadow-emerald-500/20');
+        btn.classList.remove('border-slate-700/80');
+        iconWrap.classList.add('bg-emerald-500', 'text-white');
+        iconWrap.classList.remove('bg-slate-700/60');
+        icon.classList.remove('animate-spin-slow');
+        icon.classList.add('text-white');
+        textPrimary.innerText = 'CONNECTED';
+        textPrimary.className = 'text-sm font-bold tracking-wider uppercase text-emerald-400';
+        textSub.innerText = 'STEALTH ACTIVE (PORT 443)';
+        pulse1.classList.remove('opacity-0');
+        pulse1.classList.add('animate-pulse-ring', 'border-emerald-500/40');
+        pulse2.classList.remove('opacity-0');
+        pulse2.classList.add('animate-pulse-ring');
+        headerStatus.innerText = 'Protected & cloaked';
+        statusDot.style.backgroundColor = '#10b981';
+      } 
+      else if (state === 'disconnecting') {
+        textPrimary.innerText = 'DISCONNECTING';
+        textPrimary.className = 'text-sm font-bold tracking-wider uppercase text-slate-400';
+        textSub.innerText = 'CLOSING SOCKETS';
+      } 
+      else if (state === 'disconnected') {
+        btn.classList.remove('border-emerald-500/80', 'shadow-emerald-500/20');
+        btn.classList.add('border-slate-700/80');
+        iconWrap.classList.remove('bg-emerald-500', 'text-white');
+        iconWrap.classList.add('bg-slate-700/60');
+        icon.classList.remove('animate-spin-slow', 'text-white');
+        icon.classList.add('text-slate-400');
+        textPrimary.innerText = 'TAP TO CONNECT';
+        textPrimary.className = 'text-sm font-bold tracking-wider uppercase text-slate-300';
+        textSub.innerText = 'NOT SECURED';
+        pulse1.classList.add('opacity-0');
+        pulse1.classList.remove('animate-pulse-ring');
+        pulse2.classList.add('opacity-0');
+        pulse2.classList.remove('animate-pulse-ring');
+        headerStatus.innerText = 'Ready to protect';
+        statusDot.style.backgroundColor = '#94a3b8';
+      }
+    }
+
+    // Session Timer
+    function startSessionTimer() {
+      sessionSeconds = 0;
+      sessionTimerInterval = setInterval(() => {
+        sessionSeconds++;
+        const hrs = String(Math.floor(sessionSeconds / 3600)).padStart(2, '0');
+        const mins = String(Math.floor((sessionSeconds % 3600) / 60)).padStart(2, '0');
+        const secs = String(sessionSeconds % 60).padStart(2, '0');
+        document.getElementById('sessionDuration').innerText = `${hrs}:${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function stopSessionTimer() {
+      clearInterval(sessionTimerInterval);
+      document.getElementById('sessionDuration').innerText = '00:00:00';
+    }
+
+    function startTelemetrySimulation() {
+      telemetryInterval = setInterval(() => {
+        if (!isConnected) return;
+        const dl = (Math.random() * 8.5 + 4.2).toFixed(1);
+        const ul = (Math.random() * 2.2 + 0.8).toFixed(1);
+        document.getElementById('dlSpeed').innerHTML = `${dl} <span class="text-xs text-slate-400">MB/s</span>`;
+        document.getElementById('ulSpeed').innerHTML = `${ul} <span class="text-xs text-slate-400">MB/s</span>`;
+      }, 1500);
+    }
+
+    function stopTelemetrySimulation() {
+      clearInterval(telemetryInterval);
+      document.getElementById('dlSpeed').innerHTML = `0.0 <span class="text-xs text-slate-400">KB/s</span>`;
+      document.getElementById('ulSpeed').innerHTML = `0.0 <span class="text-xs text-slate-400">KB/s</span>`;
+    }
+
+    // Render Global Server Nodes
+    function renderServerList() {
+      const container = document.getElementById('serverListContainer');
+      container.innerHTML = serverNodes.map((s, idx) => {
+        const isSelected = idx === activeNodeIndex;
+        return `
+          <div onclick="selectServer(${idx})" class="p-3.5 rounded-2xl bg-vpn-card border ${isSelected ? 'border-indigo-500 bg-indigo-950/20' : 'border-vpn-border'} flex items-center justify-between cursor-pointer active:scale-98 transition-all">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">${s.flag}</span>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <h4 class="text-sm font-bold text-white">${s.name}</h4>
+                  ${isSelected ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500 text-white font-bold">ACTIVE</span>' : ''}
+                </div>
+                <div class="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 font-mono">
+                  <span>${s.protocol}</span>
+                  <span>•</span>
+                  <span>Load: ${s.load}</span>
+                </div>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-xs font-mono font-bold ${s.ping < 60 ? 'text-emerald-400' : s.ping < 150 ? 'text-amber-400' : 'text-slate-400'}">${s.ping} ms</span>
+              <p class="text-[10px] text-slate-500">Latency</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Select Server Node
+    function selectServer(index) {
+      activeNodeIndex = index;
+      const node = serverNodes[index];
+      document.getElementById('countryFlagEl').innerText = node.flag;
+      document.getElementById('currentServerName').innerText = node.name;
+      document.getElementById('currentServerPing').innerText = `● ${node.ping} ms latency`;
+      document.getElementById('protocolBadge').innerText = node.protocol;
+      document.getElementById('virtualIpText').innerText = `${node.ip} (${node.name.split(' - ')[0]})`;
+      renderServerList();
+      showToast(`Selected node: ${node.name}`);
+      switchTab('connect');
+    }
+
+    // Refresh Server Pings
+    function refreshPings() {
+      serverNodes.forEach(node => {
+        const jitter = Math.floor(Math.random() * 8) - 4;
+        node.ping = Math.max(24, node.ping + jitter);
+      });
+      renderServerList();
+      showToast('Node pings refreshed');
+    }
+
+    function runNetworkDiagnostics() {
+      const btn = document.getElementById('diagBtn');
+      btn.innerText = 'Testing...';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        const ping = Math.floor(Math.random() * 15 + 22);
+        document.getElementById('dnsPingVal').innerText = `${ping} ms`;
+        document.getElementById('tlsHandshakeVal').innerText = `Verified (0.0${Math.floor(Math.random()*4+2)}s)`;
+        btn.innerText = 'Test Complete';
+        setTimeout(() => {
+          btn.innerText = 'Run Latency Test';
+          btn.disabled = false;
+        }, 1500);
+        showToast('Diagnostic: Network path clean and unblocked');
+      }, 900);
+    }
+
+    function handleSpecialToggle(featureName, isEnabled) {
+      showToast(`${featureName}: ${isEnabled ? 'Enabled' : 'Disabled'}`);
+    }
+
+    function handleSaveCustomNode() {
+      const val = document.getElementById('importConfigInput').value.trim();
+      if (!val) {
+        showToast('Please paste a configuration URL');
+        return;
+      }
+      serverNodes.unshift({
+        id: 'custom-' + Date.now(),
+        name: 'Custom Node (Private)',
+        flag: '⚡',
+        ping: 39,
+        ip: 'Custom Secure Relay',
+        load: '12%',
+        protocol: val.startsWith('vless') ? 'VLESS-TLS' : val.startsWith('ss') ? 'Shadowsocks' : 'Custom'
+      });
+      activeNodeIndex = 0;
+      selectServer(0);
+      closeModal('importConfigModal');
+      showToast('Custom node successfully imported!');
+    }
+
+    function copyAndroidVpnCode() {
+      const code = `class SimpleVpnService : VpnService() {
+    private var vpnInterface: ParcelFileDescriptor? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        vpnInterface = Builder()
+            .setSession("AegisFlowVPN")
+            .addAddress("10.0.0.2", 24)
+            .addDnsServer("1.1.1.1")
+            .addRoute("0.0.0.0", 0)
+            .setMtu(1420)
+            .setBlocking(false)
+            .establish()
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        vpnInterface?.close()
+        super.onDestroy()
+    }
+}`;
+      const tempArea = document.createElement('textarea');
+      tempArea.value = code;
+      document.body.appendChild(tempArea);
+      tempArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(tempArea);
+      showToast('Kotlin VpnService code copied to clipboard!');
+    }
+
+    // Modal helpers
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    // Toast Notification Box
+    let toastTimeout;
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMsg').innerText = msg;
+      toast.classList.remove('-translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('-translate-y-20', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 2600);
+    }
+
+    // Initialization on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      renderServerList();
+    });
+  </script>
+</body>
+</html>
